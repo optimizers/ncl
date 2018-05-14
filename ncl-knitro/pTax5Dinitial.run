@@ -1,0 +1,118 @@
+# pTax5Dinitial5.run
+# 08 Dec 2017: pTax5Dncl files added to multiscale website.
+# 03 Jan 2018: na=5 hardwired in some of the files.
+
+# Define parameters for agents (taxpayers)
+include dims.dat;
+
+param initialDatFile symbolic := "p5Dinitial_" & sprintf("%i", na) & ".dat";
+
+set A := 1..na;        # set of wages
+set B := 1..nb;        # set of eta
+set C := 1..nc;        # set of alpha
+set D := 1..nd;  	   # set of psi
+set E := 1..ne;        # set of gamma
+set T = {A,B,C,D,E};     # set of agents
+
+# Define wages for agents (taxpayers)
+param  wmin := 2;         # minimum wage level
+param  wmax := 4;         # maximum wage level
+param  w {i in A} := wmin + ((wmax-wmin)/(na-1))*(i-1);  # wage vector
+
+# Choose a reasonable epsilon
+param epsilon := 0.1;
+
+# mu vector
+param mu {B};             # mu = 1/eta
+param mu1{B};             # mu1[j] = mu[j] + 1
+param alpha {C};
+param gamma {E};
+param psi {D};
+
+var c {(i,j,k,g,h) in T} >= 0.1;
+var y {(i,j,k,g,h) in T} >= 0.1;
+
+maximize f: sum{(i,j,k,g,h) in T}
+   if c[i,j,k,g,h] - alpha[k] >= epsilon then
+     (c[i,j,k,g,h] - alpha[k])^(1-1/gamma[h]) / (1-1/gamma[h])
+      -  psi[g] * (y[i,j,k,g,h]/w[i])^mu1[j] / mu1[j]
+   else
+      -  0.5/gamma[h] *epsilon^(-1/gamma[h]-1)*(c[i,j,k,g,h] - alpha[k])^2
+      + (1+1/gamma[h])*epsilon^(-1/gamma[h])  *(c[i,j,k,g,h] - alpha[k])
+      + (1/(1-1/gamma[h]) -1 - 0.5/gamma[h])*epsilon^(1-1/gamma[h])
+      -  psi[g] * (y[i,j,k,g,h]/w[i])^mu1[j] / mu1[j];
+
+subject to
+   Budget {(i,j,k,g,h) in T}: y[i,j,k,g,h] - c[i,j,k,g,h] = 0;
+
+let {(i,j,k,g,h) in T} y[i,j,k,g,h] := i+1;
+let {(i,j,k,g,h) in T} c[i,j,k,g,h] := i+1;
+
+data;
+
+param  mu :=
+    1   0.5
+    2   1
+    3   2 ;
+
+# Define mu1
+let {j in B} mu1[j] := mu[j] + 1;
+
+data;
+
+param alpha :=
+    1   0
+    2   1
+    3   1.5;
+
+param psi :=
+    1   1
+    2   1.5;
+
+param gamma :=
+    1   2
+    2   3;
+
+ option solver minos;
+ option solver snopt;
+ option show_stats 1;
+
+option minos_options  ' \
+   summary_file=6       \
+   print_file=9         \
+   scale=no             \
+   print_level=0        \
+  *minor_iterations=200 \
+   major_iterations=2000\
+   iterations=50000     \
+   optimality_tol=1e-7  \
+  *penalty=100.0        \
+   completion=full      \
+  *major_damp=0.1       \
+   superbasics_limit=3000\
+   solution=yes         \
+  *verify_level=3       \
+';
+
+option snopt_options  ' \
+   summary_file=6       \
+   print_file=9         \
+   scale=no             \
+   print_level=0        \
+   major_iterations=2000\
+   iterations=50000     \
+   optimality_tol=1e-7  \
+  *penalty=100.0        \
+   superbasics_limit=3000\
+   solution=yes         \
+  *verify_level=3       \
+';
+
+
+display na,nb,nc,nd,ne;
+solve;
+display na,nb,nc,nd,ne;
+printf "data;\n" > (initialDatFile);
+printf "var " >> (initialDatFile);
+display y,c >> (initialDatFile);
+close (initialDatFile);

@@ -1,0 +1,126 @@
+# pTax5Dnclknitro5.run
+# 08 Dec 2017: pTax5Dncl files added to multiscale website.
+# 03 Jan 2018: na=5 hardwired in some of the files.
+# 23 Mar 2018: Changing ipopt to knitro.
+#              No equivalent of Ipopt  warm_start_init_point=yes
+#              Change Ipopt mu_init=1e-4 to bar_initmu=1e-4.
+# 03 Apr 2018: Knitro takes forever when mu is reduced like with IPOPT.
+# 04 Apr 2018: This file runs NCL/Knitro with default mu.
+#              k=1,2,3 work well (168, 26, 67 iterations) but k=4 takes forever.
+#              Still something wrong with Knitro??
+
+reset;
+commands pTax5Dinitial.run;
+reset;
+model pTax5Dncl.mod;
+data  pTax5Dncl.dat;
+
+param initialDatFile symbolic := "p5Dinitial_" & sprintf("%i", na) & ".dat";
+
+data; commands (initialDatFile);
+
+model;
+option solver knitro;
+option show_stats 1;
+
+param logFile symbolic := "5DNCLknitro_" & sprintf("%i", na) & ".log";
+param finalMsg symbolic := sprintf("Created %s", logFile);
+
+#option ipopt_options '\
+# dual_inf_tol=1e-6    \
+# max_iter=5000        \
+#';
+
+ option knitro_options ' \
+    algorithm=1        \
+    bar_directinterval=0 \
+    bar_initpt=2       \
+    maxit=90000        \
+    feastol=1e-6       \
+    opttol=1e-6        \
+    outlev=3           \
+';
+
+#   cg_maxit=0         \
+#   algorithm=1        \   # Use the Interior/Direct algorithm
+#   algorithm=5        \   # Run all algorithms, possibly in parallel
+#   bar_feasible=1     \   # Stay satisfying inequality constraints
+
+
+#option opt2  $ipopt_options ' warm_start_init_point=yes';
+ option opt2 $knitro_options ' bar_murule=1';
+
+# NCL method.
+# kmax, rhok, rhofac, rhomax, etak, etafac, etamin, rtol
+# are defined in the .mod file.
+
+printf "NCLknitro log for pTax5D\n" > (logFile);
+display na, nb, nc, nd, ne, primreg > (logFile);
+printf "   k      rhok      etak     rnorm        Obj\n" > (logFile);
+
+for {K in 1..kmax}
+{  display na, nb, nc, nd, ne, primreg, K, kmax, rhok, etak;
+   if K == 2 then {option knitro_options $opt2 ' bar_initmu=1e-4 bar_slackboundpush=1e-4'};
+   if K == 4 then {option knitro_options $opt2 ' bar_initmu=1e-5 bar_slackboundpush=1e-5'};
+   if K == 6 then {option knitro_options $opt2 ' bar_initmu=1e-6 bar_slackboundpush=1e-6'};
+   if K == 8 then {option knitro_options $opt2 ' bar_initmu=1e-7 bar_slackboundpush=1e-7'};
+   if K ==10 then {option knitro_options $opt2 ' bar_initmu=1e-8 bar_slackboundpush=1e-8'};
+
+   display $knitro_options;
+   solve;
+
+   let rmax := max({(i,j,k,g,h) in T, (p,q,r,s,t) in T:
+      !(i=p and j=q and k=r and g=s and h=t)} R[i,j,k,g,h,p,q,r,s,t]);
+   let rmin := min({(i,j,k,g,h) in T, (p,q,r,s,t) in T:
+      !(i=p and j=q and k=r and g=s and h=t)} R[i,j,k,g,h,p,q,r,s,t]);
+   display na, nb, nc, nd, ne, primreg, K, rhok, etak, kmax;
+   display K, kmax, rmax, rmin;
+   let rnorm := max(abs(rmax), abs(rmin));   # ||r||_inf
+
+   printf "%4i %9.1e %9.1e %9.1e %15.7e\n", K, rhok, etak, rnorm, f >> (logFile);
+   close (logFile);
+
+   if rnorm <= rtol then
+   { printf "Stopping: rnorm is small\n"; display K, rnorm; break; }
+
+   if rnorm <= etak then # update dual estimate dk; save new solution
+   {let {(i,j,k,g,h) in T, (p,q,r,s,t) in T:
+         !(i=p and j=q and k=r and g=s and h=t)}
+            dk[i,j,k,g,h,p,q,r,s,t] :=
+            dk[i,j,k,g,h,p,q,r,s,t] + rhok*R[i,j,k,g,h,p,q,r,s,t];
+    let {(i,j,k,g,h) in T} ck[i,j,k,g,h] := c[i,j,k,g,h];
+    let {(i,j,k,g,h) in T} yk[i,j,k,g,h] := y[i,j,k,g,h];
+    display K, etak;
+    if  etak == etamin then { printf "Stopping: etak = etamin\n"; break; }
+    let etak := max(etak*etafac, etamin);
+    display etak;
+   }
+   else # keep previous solution; increase rhok
+   { let {(i,j,k,g,h) in T} c[i,j,k,g,h] := ck[i,j,k,g,h];
+     let {(i,j,k,g,h) in T} y[i,j,k,g,h] := yk[i,j,k,g,h];
+     display K, rhok;
+     if  rhok == rhomax then { printf "Stopping: rhok = rhomax\n"; break; }
+     let rhok := min(rhok*rhofac, rhomax);
+     display rhok;
+   }
+}
+
+display c,y;  display na, nb, nc, nd, ne, primreg, rhok, etak, rnorm;
+
+# Count how many constraint are close to being active.
+data;
+let nT   := na*nb*nc*nd*ne;   let m := nT*(nT-1);   let n := 2*nT;
+let etak := 1.0001e-10;
+printf "\n m = %8i\n n = %8i\n", m, n >> (logFile);
+printf "\n Constraints within tol of being active\n\n" >> (logFile);
+printf "    tol      count    count/n\n" >> (logFile);
+
+for {K in 1..10}
+{
+ let kmax := card{(i,j,k,g,h) in T, (p,q,r,s,t) in T:
+                  !(i=p and j=q and k=r and g=s and h=t)
+                  and Incentive[i,j,k,g,h,p,q,r,s,t].slack <= etak};
+ printf "%9.1e %8i %8.1f\n", etak, kmax, kmax/n >> (logFile);
+ let etak := etak*10;
+}
+printf "%s\n", finalMsg;

@@ -1,0 +1,10 @@
+param na;         # number of types in wage
+param nb;         # number of types in eta
+param nc;         # number of types in alpha
+param nd;         # number of types in psi
+param ne;         # number of types in gamma
+let na := num($na);    # obtain value from env var
+let nb := 3;
+let nc := 3;
+let nd := 2;
+let ne := 2;
