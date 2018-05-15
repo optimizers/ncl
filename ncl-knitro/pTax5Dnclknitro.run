@@ -123,4 +123,5 @@ for {K in 1..10}
  printf "%9.1e %8i %8.1f\n", etak, kmax, kmax/n >> (logFile);
  let etak := etak*10;
 }
+printf "total time spent in solver: %f\n", _total_solve_time >> (logFile);
 printf "%s\n", finalMsg;
