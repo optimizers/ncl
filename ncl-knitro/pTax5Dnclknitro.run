@@ -23,7 +23,7 @@ model;
 option solver knitro;
 option show_stats 1;
 
-param logFile symbolic := "5DNCLknitro_" & sprintf("%i", na) & ".log";
+param logFile symbolic := "5DNCLknitro_" & sprintf("%i", na) & "_" & sprintf("%i", Irand224()) & ".log";
 param finalMsg symbolic := sprintf("Created %s", logFile);
 
 #option ipopt_options '\
